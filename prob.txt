@@ -1,0 +1,22 @@
+2d10:
+
+2-4 crit fail: 6%
+5-10 fail: 39%
+11-17 success: 49%
+18-20 crit success: 6%
+
++1 starts at +9% success and diminishing returns
+
+
+stats range from +1 to +5: largest gap is +4 (+30%)
+
+Getting to +9 stat should be really hard
+For an upset:
+0 45%/55%
++1 36%/45%
++2 28%/36%
++3 21%/28%
++4 15%/21%
++5 10%/15%
++6 5%/10%
+If someone manages to get to +10 they start getting auto-wins vs +1s

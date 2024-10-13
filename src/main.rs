@@ -1,43 +1,31 @@
+#![allow(dead_code)]
+
 use actions::attack;
-use characters::{CharacterID, CharacterTable, Stats};
+use characters::{CharacterID, CharacterTable};
+use modifiers::{Modifier, TeamColour};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 mod actions;
 mod characters;
-
-struct RollOutcomes(Vec<OutcomeBucket>);
-struct OutcomeBucket {
-    lower:Option<u8>,
-    upper:Option<u8>
-    //AsociatedEvent
-}
-
-impl OutcomeBucket {
-    fn crit_fail() -> Self {
-        OutcomeBucket { lower:None, upper:Some(4) }
-    }
-    fn fail() -> Self {
-        OutcomeBucket { lower:Some(5), upper:Some(10) }
-    }
-    fn success() -> Self {
-        OutcomeBucket { lower: Some(11), upper: Some(17) }
-    }
-    fn crit_success() -> Self {
-        OutcomeBucket { lower: Some(18), upper: None }
-    }
-}
+mod modifiers;
 
 fn main() {
     let mut rng = rand::thread_rng();
     let mut rng = ChaCha8Rng::seed_from_u64(rng.gen());
 
     let table = CharacterTable::connect("DelverBase.db").unwrap();
+    // table.handle_alteration(CharacterID::from(1), characters::CharacterAlteration::AddModifier(Modifier::Team(vec![CharacterID::from(2)], TeamColour::from([252,0,0])))).unwrap();
+    // table.handle_alteration(CharacterID::from(1), characters::CharacterAlteration::AddModifier(Modifier::NPC)).unwrap();
+    
+    // println!("{}",table.put(String::from("Example"), Stats::example()).unwrap());
     // println!("{}",table.put(String::from("Example2"), Stats::example()).unwrap());
-    let c_one = table.get(CharacterID(1)).unwrap();
-    let c_two = table.get(CharacterID(2)).unwrap();
+    let c_one = table.get(CharacterID::from(1)).unwrap();
+    let c_two = table.get(CharacterID::from(2)).unwrap();
+
+    println!("{:?}", c_one);
 
     let action = attack();
 
-    println!("{}", action.resolve(c_one.stats, c_two.stats, &mut rng));
+    println!("{}", action.resolve(c_one, c_two, &mut rng));
 }

@@ -1,4 +1,4 @@
-use crate::characters::{BaseCharacter, Stat, Stats};
+use crate::characters::{BaseCharacter, Stat};
 use rand::distributions::Distribution;
 
 struct DiceDistribution(u8, u8);
@@ -20,10 +20,10 @@ pub struct Action {
 }
 
 impl Action {
-    pub fn resolve(&self, proactor:Stats, reactor:Stats, rng:&mut SimRng) -> i8 {
+    pub fn resolve(&self, proactor:BaseCharacter, reactor:BaseCharacter, rng:&mut SimRng) -> i8 {
         let modifier = 
-        proactor.get(&self.proactive.primary) + proactor.get(&self.proactive.secondary) 
-        - reactor.get(&self.reactive.primary) - reactor.get(&self.reactive.secondary);
+        proactor.stat(self.proactive.primary) + proactor.stat(self.proactive.secondary) 
+        - reactor.stat(self.reactive.primary) - reactor.stat(   self.reactive.secondary);
         DICE.sample(rng) as i8 + modifier
     }
 }
@@ -35,4 +35,27 @@ struct Roll {
 
 pub fn attack() -> Action {
     Action { proactive: Roll { primary: Stat::Violence, secondary: Stat::Run }, reactive: Roll { primary: Stat::Buoyancy, secondary: Stat::Maverickism } }
+}
+
+
+struct RollOutcomes(Vec<OutcomeBucket>);
+struct OutcomeBucket {
+    lower:Option<u8>,
+    upper:Option<u8>
+    //AsociatedEvent
+}
+
+impl OutcomeBucket {
+    fn crit_fail() -> Self {
+        OutcomeBucket { lower:None, upper:Some(4) }
+    }
+    fn fail() -> Self {
+        OutcomeBucket { lower:Some(5), upper:Some(10) }
+    }
+    fn success() -> Self {
+        OutcomeBucket { lower: Some(11), upper: Some(17) }
+    }
+    fn crit_success() -> Self {
+        OutcomeBucket { lower: Some(18), upper: None }
+    }
 }

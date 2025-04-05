@@ -1,13 +1,10 @@
-[package]
-name = "delver"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+members = [
+    "delver_sim",
+    "chronobase",
+    "game_runner",
+    "discord_bot"
+]
 
-[dependencies]
-rand = "0.8.5"
-rand_chacha = "0.3.1"
-ron = "0.8.1"
-rusqlite = { version = "0.31.0", features = ["bundled"] }
-serde = { version ="1.0.210", features = ["derive"] }
+resolver = "2"

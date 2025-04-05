@@ -1,2 +1,5 @@
 /target
 DelverBase.db
+misc_code
+temp.db
+.env

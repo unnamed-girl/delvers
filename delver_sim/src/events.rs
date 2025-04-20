@@ -1,99 +1,92 @@
-use chronobase::EntityID;
 
-use crate::{entities::{BaseCharacter, Character, Team}, game::{Game, LoadableID}};
+use serde::{Deserialize, Serialize};
 
-impl<'a> Game<'a> {
-    fn alter(&mut self) {
+use crate::{game::{ActiveCharacterID, Sim}, progress_bars::{GameProgressBarLocation, ProgressBar, ProgressBarName}};
 
+impl Sim<'_> {
+    fn get_pre_responses(&self, event: &mut Event) -> Vec<Event> {
+        self.world.active_characters.0.values()
+            .flat_map(|active_character| {
+                let character = self.database.load(active_character.character);
+                character.modifiers.iter().flat_map(|modifier| modifier.pre_event(active_character, event))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
-    fn get_responses(&self, _event: &Event) -> Vec<Event> {
-        vec![]
+    fn get_post_responses(&self, event: &ExecutedEvent) -> Vec<Event> {
+        self.world.active_characters.0.values()
+            .flat_map(|active_character| {
+                let character = self.database.load(active_character.character);
+                character.modifiers.iter().flat_map(|modifier| modifier.post_event(active_character, event))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Event {
-    Summon {
-        summonees:Vec<EntityID<BaseCharacter>>,
-        team:EntityID<Team>
+    Attack {
+        attacker: ActiveCharacterID,
+        target: ActiveCharacterID
     },
-    Damage {
-        source: EntityID<Character>,
-        target: EntityID<Character>,
-        amount: i32
+    CreateProgressBar {
+        location: GameProgressBarLocation,
+        bar: ProgressBar
     },
-    SwitchTeam {
-        target: EntityID<Character>,
-        destination: Option<EntityID<Team>>
+    ProgressProgressBar {
+        location: GameProgressBarLocation,
+        amount: u16
     },
-    RotateRoster {
-        amount: usize,
-        team: EntityID<Team>
-    }
+    Say(String)
 }
 impl Event {
-    pub fn complete(self, world: &mut Game) -> CompletedEvent {
-        self.execute(world).complete(world)
-    }
-    fn execute(self, world: &mut Game) -> ExecutedEvent {
+    fn execute(self, sim: &mut Sim) -> (ExecutedEvent, Vec<Event>) {
+        let mut events = Vec::new();
         match &self {
-            Event::Summon { summonees, team } => {
-                for character in summonees {
-                    world.add_character(*character, *team);
-                }
+            Event::Attack { target, .. } => {
+                events.push(Event::ProgressProgressBar { location: GameProgressBarLocation::Character(*target, ProgressBarName::HP), amount: 2 });
             }
-            Event::Damage { source: _, target, amount } => {
-                target.get_mut(world).alter_health(-*amount);
-            },
-            Event::SwitchTeam { target, destination } => {
-                // if let Some(current_team) = target.get(world).team() {
-                let current_team = target.get(world).team();
-                    let roster = world.rosters.get_mut(&current_team).unwrap();
-                    let index = roster.iter().position(|id| id == target).unwrap();
-                    roster.remove(index);
-                // }
-
-                if let Some(destination) = destination {
-                    world.rosters.get_mut(destination).unwrap().push(*target);
-                    *target.get_mut(world).team_mut() = *destination;
-                }
+            Event::CreateProgressBar { location, bar } => {
+               sim.world.insert_progress_bar(*location, *bar);
             }
-            Event::RotateRoster { amount, team } => {
-                let roster = world.rosters.get_mut(&team).unwrap();
-                roster.rotate_right(*amount);
+            Event::ProgressProgressBar { location, amount } => {
+                let bar =sim.world.get_progress_bar_mut(*location);
+                bar.increment(*amount);
             }
+            Event::Say(_) => ()
         }
-        ExecutedEvent(self)
+        (ExecutedEvent(self), events)
     }
 }
 
-#[derive(Debug, Clone)]
-struct ExecutedEvent(Event);
-impl ExecutedEvent {
-    fn complete(self, world: &mut Game) -> CompletedEvent {
-        let mut responses = Vec::new();
 
-        for event in world.get_responses(&self.0) {
-            let event = event.execute(world);
-            let event = event.complete(world);
-            responses.push(event);
-        }
+impl Event {
+    pub fn complete(mut self, sim: &mut Sim) -> CompletedEvent {
+        let pre_responses = sim.get_pre_responses(&mut self)
+            .into_iter()
+            .map(|event| event.complete(sim))
+            .collect();
+        
+        let (event, outcomes) = self.execute(sim);
 
-        CompletedEvent { event_type: self.0, responses }
+        let outcomes = outcomes.into_iter().map(|event| event.complete(sim)).collect();
+
+        let post_responses = sim.get_post_responses(&event)
+            .into_iter()
+            .map(|event| event.complete(sim))
+            .collect();
+
+        CompletedEvent { event, pre_responses, outcomes, post_responses }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutedEvent(pub Event);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletedEvent {
-    event_type: Event,
-    responses: Vec<CompletedEvent>
-}
-impl CompletedEvent {
-    pub fn display(&self, world: &Game) -> String {
-        match &self.event_type {
-            Event::Damage { source, target, amount } => {
-                format!("{} deals {} to {}", source.get(world).name(), amount, target.get(world).name())
-            }
-            _ => format!("{:?}", &self.event_type)
-        }
-    }
+    pub event: ExecutedEvent,
+    pub pre_responses: Vec<CompletedEvent>,
+    pub outcomes: Vec<CompletedEvent>,
+    pub post_responses: Vec<CompletedEvent>
 }

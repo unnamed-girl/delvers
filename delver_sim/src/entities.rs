@@ -1,92 +1,33 @@
-use std::fmt::{Debug, Display};
-use chronobase::{entities::PatchableEntity, ChronobasePatch, EntityID, SavableEntity};
+use std::{fmt::{Debug, Display}, ops::{Index, IndexMut}};
+use chronobase::{EntityID, SavableEntity};
 use serde::{Deserialize, Serialize};
 
-use crate::modifiers::BaseModifier;
+use crate::{modifiers::Modifier, progress_bars::Colour};
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Character {
-    id: EntityID<Character>,
-    name: String,
-    base_id: EntityID<BaseCharacter>,
-    team: EntityID<Team>,
-    stats: Stats,
-    modifiers: Vec<BaseModifier>,
-    damage_taken: i32,
+    pub id: EntityID<Character>,
+    pub name: String,
+    pub team: EntityID<Team>,
+    pub stats: Stats,
+    pub modifiers: Vec<Modifier>
 }
 
 impl Character {
-    pub fn new(base:&BaseCharacter, team:EntityID<Team>) -> Self {
-        let modifiers = base.modifiers().clone();
+    pub fn new(name: String, stats: Stats, team: EntityID<Team>) -> Self {
         Character {
             id: EntityID::roll(),
-            name: base.name.clone(),
-            base_id: base.id(),
+            name,
             team,
-            stats: base.stats().clone(),
-            modifiers,
-            damage_taken: 0
+            stats,
+            modifiers: Vec::new(),
         }
     }
-    pub fn team(&self) -> EntityID<Team> {
-        self.team
-    }
-    pub fn modifiers(&self) -> impl Iterator<Item = &BaseModifier> {
+    pub fn modifiers(&self) -> impl Iterator<Item = &Modifier> {
         self.modifiers.iter()
     }
-    pub fn alter_health(&mut self, delta: i32) {
-        self.damage_taken -= delta;
-    }
-    
-    pub fn id(&self) -> EntityID<Character> {
-        self.id
-    }
-    
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    
-    pub fn damage_taken(&self) -> i32 {
-        self.damage_taken
-    }
-    
-    pub fn team_mut(&mut self) -> &mut EntityID<Team> {
-        &mut self.team
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BaseCharacter {
-    id: EntityID<BaseCharacter>,
-    name: String,
-    stats: Stats,
-    modifiers: Vec<BaseModifier>
-}
-impl BaseCharacter {
-    pub fn new(name: String, stats:Stats, modifiers: Vec<BaseModifier>) -> Self {
-        BaseCharacter {
-            id: EntityID::roll(),
-            name,
-            stats,
-            modifiers
-        }
-    }
-    pub fn roll(name: String, stats:Stats) -> Self {
-        Self::new(name, stats, Vec::new())
-    }
-    pub fn stats(&self) -> &Stats {
-        &self.stats
-    }
-    
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    
-    pub fn modifiers(&self) -> &Vec<BaseModifier> {
-        &self.modifiers
-    }
-    pub fn id(&self) -> EntityID<BaseCharacter> {
-        self.id
+    pub fn roll(name: String, stats:Stats, team: EntityID<Team>) -> Self {
+        Self::new(name, stats, team)
     }
 }
 
@@ -100,23 +41,24 @@ pub struct Stats {
     pub maverickism:i8,
     pub run:i8,
 }
-impl Stats {
-    pub fn example() -> Self {
-        Stats { violence: 1, bloodthirst: 2, realism: 3, perpetuity: 4, buoyancy: 5, maverickism: 6, run: 7 }
-    }
-    pub fn get(&self, stat:Stat) -> i8 {
-        match stat {
-            Stat::Bloodthirst => self.bloodthirst,
-            Stat::Violence => self.violence,
-            Stat::Realism => self.realism,
-            Stat::Perpetuity => self.perpetuity,
-            Stat::Buoyancy => self.buoyancy,
-            Stat::Maverickism => self.maverickism,
-            Stat::Run => self.run
+impl Index<Stat> for Stats {
+    type Output = i8;
+    fn index(&self, index: Stat) -> &Self::Output {
+        match index {
+            Stat::Bloodthirst => &self.bloodthirst,
+            Stat::Violence => &self.violence,
+            Stat::Realism => &self.realism,
+            Stat::Perpetuity => &self.perpetuity,
+            Stat::Buoyancy => &self.buoyancy,
+            Stat::Maverickism => &self.maverickism,
+            Stat::Run => &self.run
         }
     }
-    pub fn get_mut(&mut self, stat:Stat) -> &mut i8 {
-        match stat {
+}
+
+impl IndexMut<Stat> for Stats {
+    fn index_mut(&mut self, index: Stat) -> &mut Self::Output {
+        match index {
             Stat::Bloodthirst => &mut self.bloodthirst,
             Stat::Violence => &mut self.violence,
             Stat::Realism => &mut self.realism,
@@ -125,6 +67,20 @@ impl Stats {
             Stat::Maverickism => &mut self.maverickism,
             Stat::Run => &mut self.run
         }
+    }
+}
+impl Stats {
+    pub fn example() -> Self {
+        Stats { violence: 1, bloodthirst: 2, realism: 3, perpetuity: 4, buoyancy: 5, maverickism: 6, run: 7 }
+    }
+    pub fn get(&self, stat:Stat) -> i8 {
+        self[stat]
+    }
+    pub fn get_mut(&mut self, stat:Stat) -> &mut i8 {
+        &mut self[stat]
+    }
+    pub fn canonical_order() -> [Stat; 7] {
+        [Stat::Bloodthirst, Stat::Violence, Stat::Realism, Stat::Perpetuity, Stat::Buoyancy, Stat::Maverickism, Stat::Run]
     }
 }
 
@@ -152,110 +108,30 @@ impl Display for Stat {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub enum CharacterAlteration {
-    ChangeStat(Stat, i8),
-    AddModifier(BaseModifier)
-}
-impl CharacterAlteration {
-    pub fn apply(self, mut character: BaseCharacter) -> BaseCharacter {
-        match self {
-            Self::AddModifier(modifier) => {
-                character.modifiers.push(modifier);
-            }
-            Self::ChangeStat(stat, delta) => {
-                *character.stats.get_mut(stat) += delta;
-            }
-        }
-        character
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Team {
-    id:EntityID<Team>,
-    base:EntityID<BaseTeam>,
-    name: String,
-    colour:TeamColour
-}
-impl Team {
-    pub fn new(base:BaseTeam) -> Self {
-        Team {
-            id: EntityID::roll(),
-            base: base.id,
-            name: base.name,
-            colour: base.colour
-        }
-    }
-    
-    pub fn id(&self) -> EntityID<Team> {
-        self.id
-    }
-    
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn base(&self) -> EntityID<BaseTeam> {
-        self.base
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BaseTeam {
-    id:EntityID<BaseTeam>,
-    incarnation_id:EntityID<BaseCharacter>,
-    name: String,
-    colour:TeamColour
+pub struct Team {
+    pub id: EntityID<Team>,
+    pub name: String,
+    pub colour:Colour,
+    pub roster: Vec<EntityID<Character>>
 }
-
-impl BaseTeam {
-    pub fn new(incarnation_id:EntityID<BaseCharacter>, name: String, colour: TeamColour) -> Self {
-        BaseTeam {
-            id:EntityID::roll(), incarnation_id, name, colour
+impl Team {
+    pub fn new(name: String, colour: Colour) -> Self {
+        Team {
+            id: EntityID::roll(),
+            name,
+            colour,
+            roster: Vec::new()
         }
     }
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn incarnation_id(&self) -> EntityID<BaseCharacter> {
-        self.incarnation_id
-    }
-    pub fn colour(&self) -> TeamColour {
-        self.colour
-    }
-    
-    pub fn id(&self) -> EntityID<BaseTeam> {
-        self.id
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[serde(transparent)] 
-pub struct TeamColour([u8;3]);
-impl From<[u8;3]> for TeamColour {
-    fn from(value: [u8;3]) -> Self {
-        Self(value)
-    }
-}
-impl Display for TeamColour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&ron::to_string(self).unwrap(), f)
-    }
 }
 
 
 
-impl SavableEntity for BaseCharacter {
+impl SavableEntity for Character {
     const TABLE_NAME: &'static str = "characters";
 }
-impl PatchableEntity for BaseCharacter {
-    type Alteration = CharacterAlteration;
-}
-impl SavableEntity for BaseTeam {
+impl SavableEntity for Team {
     const TABLE_NAME: &'static str = "teams";
-}
-impl ChronobasePatch<BaseCharacter> for CharacterAlteration {
-    fn apply(self, entity:BaseCharacter) -> BaseCharacter {
-        CharacterAlteration::apply(self, entity)
-    }
 }

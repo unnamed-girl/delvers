@@ -1,38 +1,41 @@
-use delver_sim::entities::{BaseCharacter, Stats};
-use poise::serenity_prelude as serenity;
-use chronobase::database_connection::{AsyncTypebase, Chronobase, HTTPConnection};
+use std::time::Duration;
 
-struct UserData(HTTPConnection); // User data, which is stored and accessible in all command invocations
+use delver_sim::{database::DatabaseManager, delver_display::{DisplayConstruct, ToDisplayConstruct}, game::Game};
+use poise::serenity_prelude::{self as serenity, CreateMessage, MessageBuilder};
+use chronobase::{DirectConnection, EntityID};
+use tokio::time::sleep;
+use uuid::Uuid;
+
+struct UserData(DatabaseManager); // User data, which is stored and accessible in all command invocations
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, UserData, Error>;
 
-#[poise::command(slash_command, prefix_command)]
-async fn reserve_temporal_index(
-    ctx: Context<'_>,
-) -> Result<(), Error> {
-    let response = ctx.data().0.async_reserve_temporal_index().await;
-    let ping = format!("<@{}>", &ctx.author().id);
-    let response = match response {
-        Ok(response) => format!("{} Next temporal index is {}", ping, response),
-        Err(_) => format!("Error retrieving next temporal index")
-    };
-    ctx.say(response).await?;
+async fn display_construct(ctx: Context<'_>, construct: DisplayConstruct) -> Result<(), Error> {
+    match construct {
+        a @ DisplayConstruct::ParentChildren(..) | a @ DisplayConstruct::Single(_) | a @ DisplayConstruct::List(_) | a @ DisplayConstruct::Multi(_) => {
+            let message = MessageBuilder::new()
+                .push_codeblock(a.to_string(), Some("ansi"))
+                .build();
+            let message = CreateMessage::new().content(message);
+            ctx.channel_id().send_message(ctx, message).await?;            
+        }
+    }
     Ok(())
 }
 
 #[poise::command(slash_command, prefix_command)]
-async fn create_character(
+async fn print_out_game(
     ctx: Context<'_>,
+    game_id: Uuid,
+    n: usize
 ) -> Result<(), Error> {
-    let character = BaseCharacter::roll("Character".to_string(), Stats::example());
-    ctx.data().0.async_save(character.id(), &character).await.map_err(|_| "error saving character")?;
-    let character = ctx.data().0.async_load_latest(character.id(), None).await;
-
-    let response = match character {
-        Ok(character) => format!("{:?}", character),
-        Err(_) => format!("Error retrieving character after creation")
-    };
-    ctx.say(response).await?;
+    let mut game = ctx.data().0.0.load(EntityID::<Game>::from(game_id), None, n)?;
+    game.reverse();
+    for state in game {
+        let events = DisplayConstruct::Multi(state.latest_events.iter().map(|event| event.longform(&state, &ctx.data().0)).collect());
+        display_construct(ctx, events).await?;
+        sleep(Duration::from_millis(500)).await;
+    }
     Ok(())
 }
 
@@ -45,7 +48,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![reserve_temporal_index(), create_character()],
+            commands: vec![print_out_game()],
             ..Default::default()
         })
         .setup(|ctx, ready, framework| {
@@ -56,7 +59,7 @@ async fn main() {
                     ctx.online();
                 }
                 
-                Ok(UserData(HTTPConnection::new("http://localhost:8000")))
+                Ok(UserData(DatabaseManager::new(Box::new(DirectConnection::new("temp.db".to_string())))))
             })
         })
         .build();
